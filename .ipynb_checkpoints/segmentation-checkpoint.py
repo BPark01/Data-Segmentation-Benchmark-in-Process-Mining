@@ -1,14 +1,9 @@
-import pm4py as pm
-import pandas as pd
-import numpy as np
 from pm4py.objects.log.util import dataframe_utils
 from pm4py.objects.conversion.log import converter as log_converter
 from pm4py.algo.discovery.inductive import algorithm as inductive_miner
 from pm4py.objects.conversion.process_tree import converter as tree_to_petri
 from pm4py.visualization.petri_net import visualizer as pn_visualizer
 from pm4py.statistics.traces.generic.log import case_statistics
-from pm4py.algo.conformance.alignments.petri_net import algorithm as alignments
-from pm4py.algo.evaluation.precision import algorithm as precision_evaluator
 
 def split_event_log_by_cluster(trace_df, full_event_df, case_id='case:concept:name'):
     cluster_logs = {}
