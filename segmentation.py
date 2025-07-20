@@ -9,6 +9,7 @@ from pm4py.visualization.petri_net import visualizer as pn_visualizer
 from pm4py.statistics.traces.generic.log import case_statistics
 from pm4py.algo.conformance.alignments.petri_net import algorithm as alignments
 from pm4py.algo.evaluation.precision import algorithm as precision_evaluator
+import copy
 
 def split_event_log_by_cluster(trace_df, full_event_df, case_id='case:concept:name'):
     cluster_logs = {}
@@ -126,8 +127,8 @@ def define_age_hierarchy(df):
     })
     return df
 
-def define_time_hierarchy(df):
-    df['timestamp'] = pd.to_datetime(df['time:timestamp'])
+def define_time_hierarchy(df, time='time:timestamp'):
+    df['timestamp'] = pd.to_datetime(df[time])
     df['year'] = df['timestamp'].dt.year
     df['month'] = df['timestamp'].dt.month
     df['day'] = df['timestamp'].dt.day
@@ -157,6 +158,124 @@ def define_activity_groups(df):
 
     return df
 
+def define_race_hierarchy(df):
+    df['race_specific'] = df.groupby('case:concept:name')['race'].transform(lambda x: x.ffill().bfill()).fillna('UNKNOWN')
+
+    # Group: regional
+    race_group_map = {
+        'WHITE - OTHER EUROPEAN': 'EUROPEAN',
+        'WHITE - RUSSIAN': 'EUROPEAN',
+        'WHITE - EASTERN EUROPEAN': 'EUROPEAN',
+        'WHITE - BRAZILIAN': 'EUROPEAN',
+        'WHITE': 'EUROPEAN',
+
+        'BLACK/AFRICAN': 'AFRICAN',
+        'BLACK/AFRICAN AMERICAN': 'AFRICAN',
+        'BLACK/CAPE VERDEAN': 'CARIBBEAN',
+        'BLACK/CARIBBEAN ISLAND': 'CARIBBEAN',
+
+        'ASIAN - CHINESE': 'EAST ASIAN',
+        'ASIAN - KOREAN': 'EAST ASIAN',
+        'ASIAN - ASIAN INDIAN': 'SOUTH ASIAN',
+        'ASIAN - SOUTH EAST ASIAN': 'SOUTH EAST ASIAN',
+
+        'HISPANIC/LATINO - PUERTO RICAN': 'CARIBBEAN LATINO',
+        'HISPANIC/LATINO - DOMINICAN': 'CARIBBEAN LATINO',
+        'HISPANIC/LATINO - GUATEMALAN': 'CENTRAL AMERICAN',
+        'HISPANIC/LATINO - SALVADORAN': 'CENTRAL AMERICAN',
+        'HISPANIC/LATINO - HONDURAN': 'CENTRAL AMERICAN',
+        'HISPANIC/LATINO - CUBAN': 'CARIBBEAN LATINO',
+        'HISPANIC/LATINO - COLUMBIAN': 'SOUTH AMERICAN',
+        'HISPANIC/LATINO - MEXICAN': 'NORTH LATINO',
+        'HISPANIC/LATINO - CENTRAL AMERICAN': 'CENTRAL AMERICAN',
+        'SOUTH AMERICAN': 'SOUTH AMERICAN',
+
+        'PORTUGUESE': 'EUROPEAN',
+        'MULTIPLE RACE/ETHNICITY': 'MULTIRACIAL',
+        'AMERICAN INDIAN/ALASKA NATIVE': 'NATIVE AMERICAN',
+        'NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER': 'PACIFIC ISLANDER',
+        'OTHER': 'MISC',
+        'UNKNOWN': 'UNKNOWN',
+        'UNABLE TO OBTAIN': 'UNKNOWN',
+        'PATIENT DECLINED TO ANSWER': 'UNKNOWN'
+    }
+
+    df['race_regional'] = df['race_specific'].map(race_group_map).fillna('UNKNOWN')
+
+    # Category: continental
+    race_category_map = {
+        'WHITE': 'WHITE',
+        'WHITE - OTHER EUROPEAN': 'WHITE',
+        'WHITE - RUSSIAN': 'WHITE',
+        'WHITE - EASTERN EUROPEAN': 'WHITE',
+        'WHITE - BRAZILIAN': 'WHITE',
+
+        'BLACK/AFRICAN': 'BLACK',
+        'BLACK/AFRICAN AMERICAN': 'BLACK',
+        'BLACK/CAPE VERDEAN': 'BLACK',
+        'BLACK/CARIBBEAN ISLAND': 'BLACK',
+
+        'ASIAN': 'ASIAN',
+        'ASIAN - CHINESE': 'ASIAN',
+        'ASIAN - KOREAN': 'ASIAN',
+        'ASIAN - ASIAN INDIAN': 'ASIAN',
+        'ASIAN - SOUTH EAST ASIAN': 'ASIAN',
+
+        'HISPANIC OR LATINO': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - PUERTO RICAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - DOMINICAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - GUATEMALAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - SALVADORAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - HONDURAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - COLUMBIAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - MEXICAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - CUBAN': 'HISPANIC/LATINO',
+        'HISPANIC/LATINO - CENTRAL AMERICAN': 'HISPANIC/LATINO',
+        'SOUTH AMERICAN': 'HISPANIC/LATINO',
+
+        'PORTUGUESE': 'OTHER',
+        'MULTIPLE RACE/ETHNICITY': 'OTHER',
+        'AMERICAN INDIAN/ALASKA NATIVE': 'OTHER',
+        'NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER': 'OTHER',
+        'OTHER': 'OTHER',
+        'UNKNOWN': 'UNKNOWN',
+        'UNABLE TO OBTAIN': 'UNKNOWN',
+        'PATIENT DECLINED TO ANSWER': 'UNKNOWN'
+    }
+    
+    df['race_continental'] = df['race_specific'].map(race_category_map).fillna('UNKNOWN')
+
+    return df
+
+def define_activity_hierarchy(df):
+    df['activity_name'] = df['concept:name']
+
+    # Group : action
+    activity_group_map = {
+        'Medicine reconciliation': 'Medication',
+        'Medicine dispensations': 'Medication',
+        'Vital sign check': 'Monitoring',
+        'Discharge from the ED': 'Disposition',
+        'Enter the ED': 'ED',
+        'Triage in the ED': 'ED'
+    }
+
+    df['activity_group'] = df['activity_name'].map(activity_group_map).fillna('OTHER')
+    
+
+    # Category : category
+    activity_domain_map = {
+        'Medication': 'Clinical',
+        'Monitoring': 'Clinical',
+        'ED': 'Operational',
+        'Disposition': 'Operational',
+    }
+
+    df['activity_category'] = df['activity_group'].map(activity_domain_map).fillna('Unclassified')
+
+    return df
+
+
 def fill_trace_level_values(df, columns, case_col='case:concept:name'):
     df = df.copy()
 
@@ -176,6 +295,23 @@ def build_pcs():
         'activity' : {
             'attributes': ['concept:name', 'activity_group'],
             'herarchy': [('concept:name', 'activity_group')]
+        }
+    }
+    return pcs
+
+def build_pcs_mimic():
+    pcs = {
+        'time': {
+            'attributes': ['day', 'month', 'year'],
+            'hierarchy': [('day', 'month'), ('month', 'year')]
+        },
+        'race' : {
+            'attributes': ['race_specific', 'race_regional', 'race_continental'],
+            'hierarchy': [('race_specific', 'race_regional'), ('race_regional', 'race_continental')]
+        },
+        'activity': {
+            'attributes': ['activity_name', 'activity_group', 'activity_category'],
+            'hierarchy': [('activity_name', 'activity_group'),('activity_group', 'activity_category')]
         }
     }
     return pcs
@@ -253,15 +389,16 @@ def materialize_process_cube_view(df, pcs, pcv):
 
     return cube # dict (dimensions: sublog)
 
-def discover_models_for_cells(df, cell_list, case_col='case:concept:name', act_col='concept:name', time_col='time:timestamp'):
+def discover_models_for_cells(df, cell_list, dim1='month', dim2='race_continental', dim3='activity_category'):
     models = {}
 
     for cell in cell_list:
-        year, age_cat, act_group = cell
+        dim1_value, dim2_value, dim3_value = cell
+
         sublog = df[
-            (df['year'] == year) &
-            (df['age_category'] == age_cat) &
-            (df['activity_group'] == act_group)
+            (df[dim1] == dim1_value) &
+            (df[dim2] == dim2_value) &
+            (df[dim3] == dim3_value)
         ]
 
         if sublog.empty:
@@ -283,16 +420,16 @@ def discover_models_for_cells(df, cell_list, case_col='case:concept:name', act_c
 
     return models
 
-def evaluate_models_pc(df, models_dict, case_col='case:concept:name', act_col='concept:name', time_col='time:timestamp'):
+def evaluate_models_pc(df, models_dict, dim1='month', dim2='race_continental', dim3='activity_category'):
     results = []
 
     for cell_key, (net, im, fm) in models_dict.items():
-        year, age_cat, act_group = cell_key
+        dim1_value, dim2_value, dim3_value = cell_key
 
         sublog = df[
-            (df['year'] == year) &
-            (df['age_category'] == age_cat) &
-            (df['activity_group'] == act_group)
+            (df[dim1] == dim1_value) &
+            (df[dim2] == dim2_value) &
+            (df[dim3] == dim3_value)
         ].copy()
 
         if sublog.empty:
@@ -343,3 +480,5 @@ def evaluate_models_pc(df, models_dict, case_col='case:concept:name', act_col='c
 ## Differences in terms of output
 ## Comparison of the output
 # at 3 on tuesday
+
+
